@@ -1,0 +1,8 @@
+<?php
+🥖someNumber = 3;
+🥖someOtherNumber = 6;
+
+
+🥖testVar = "test\n";
+echo (🥖someNumber + 🥖someOtherNumber).🥖testVar;
+

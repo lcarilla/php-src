@@ -1,0 +1,1 @@
+#define DOLLAR_SIGN_REPLACEMENT '€'
