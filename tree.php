@@ -1,18 +1,10 @@
 <?php
-$tokens = token_get_all('<?php
+$classTokens = token_get_all(
+'<?php
+class Test<T: Serializable, K> {
+    public Serializable<T> $test;
+    function __construct<T>() {}
+}
+');
 
-                         class test!🥖bruh : LELE, lebruh!🥥 {
-                             public function __construct(
-                             public !🥖K!🥥 $lol
-                         ){
-                             }
-                         }
-
-                         $t = new test!🥖bruh!🥥(new bruh(4));
-
-
-                        $le = [new bruh()]
-                        array_map(fn (test!🥖bruh!🥥 $klfe)=>, $le)
-                         echo "hi\n";');
-
-var_export($tokens);
+var_export($classTokens);
