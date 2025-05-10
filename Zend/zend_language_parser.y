@@ -237,6 +237,11 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %token T_COALESCE        "'??'"
 %token T_POW             "'**'"
 %token T_POW_EQUAL       "'**='"
+
+// Generics
+%token T_GENERIC_START "'<'"
+%token T_GENERIC_END "'>'"
+
 /* We need to split the & token in two to avoid a shift/reduce conflict. For T1&$v and T1&T2,
  * with only one token lookahead, bison does not know whether to reduce T1 as a complete type,
  * or shift to continue parsing an intersection type. */
@@ -286,6 +291,16 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %type <ast> function_name non_empty_member_modifiers
 %type <ast> property_hook property_hook_list optional_property_hook_list hooked_property property_hook_body
 %type <ast> optional_parameter_list
+%type <ast> nested_generic_type_parameter_list
+%type <ast> nested_generic_type_parameters
+%type <ast> generic_type
+%type <ast> non_empty_generic_type_parameters
+%type <ast> generic_type_with_constraint
+%type <ast> generic_type_parameter_list_with_constraints
+%type <ast> class_or_fuction_decl_generic_type_parameters
+%type <ast> simple_generic_type
+%type <ast> simple_generic_type_parameter_list
+%type <ast> non_empty_simple_generic_type_parameters
 
 %type <num> returns_ref function fn is_reference is_variadic property_modifiers property_hook_modifiers
 %type <num> method_modifiers class_const_modifiers member_modifier optional_cpp_modifiers
@@ -597,11 +612,65 @@ is_variadic:
 
 class_declaration_statement:
 		class_modifiers T_CLASS { $<num>$ = CG(zend_lineno); }
-		T_STRING extends_from implements_list backup_doc_comment '{' class_statement_list '}'
-			{ $$ = zend_ast_create_decl(ZEND_AST_CLASS, $1, $<num>3, $7, zend_ast_get_str($4), $5, $6, $9, NULL, NULL); }
+		T_STRING class_or_fuction_decl_generic_type_parameters extends_from implements_list backup_doc_comment '{' class_statement_list '}'
+			{ $$ = zend_ast_create_decl(ZEND_AST_CLASS, $1, $<num>3, $8, zend_ast_get_str($4), $6, $7, $10, $5, NULL); }
 	|	T_CLASS { $<num>$ = CG(zend_lineno); }
-		T_STRING extends_from implements_list backup_doc_comment '{' class_statement_list '}'
-			{ $$ = zend_ast_create_decl(ZEND_AST_CLASS, 0, $<num>2, $6, zend_ast_get_str($3), $4, $5, $8, NULL, NULL); }
+		T_STRING class_or_fuction_decl_generic_type_parameters extends_from implements_list backup_doc_comment '{' class_statement_list '}'
+			{ $$ = zend_ast_create_decl(ZEND_AST_CLASS, 0, $<num>2, $7, zend_ast_get_str($3), $5, $6, $9, $4, NULL); }
+;
+
+// only support e.g. "<T, S, A>"
+non_empty_simple_generic_type_parameters:
+    T_GENERIC_START simple_generic_type_parameter_list T_GENERIC_END { $$ = $2; }
+;
+
+// only support e.g. "SomeType<T, S, A>"
+simple_generic_type:
+  T_STRING { $$ = zend_ast_create_zval_from_str(zend_ast_get_str($1)); }
+  | T_STRING non_empty_simple_generic_type_parameters { $$ = zend_ast_create(ZEND_AST_GENERIC_TYPE, zend_ast_create_zval_from_str(zend_ast_get_str($1)), $2); }
+;
+
+// only support e.g. "T, S, A"
+simple_generic_type_parameter_list:
+    T_STRING { $$ = zend_ast_create_list(1, ZEND_AST_GENERIC_TYPE_PARAM_LIST, $1); }
+    | generic_type_parameter_list_with_constraints ',' T_STRING { $$ = zend_ast_list_add($1, $3); }
+;
+
+// supports bounded types, e.g. "<T : SomeInterface, S : SomeClass>"
+class_or_fuction_decl_generic_type_parameters:
+    T_GENERIC_START generic_type_parameter_list_with_constraints T_GENERIC_END { $$ = $2; }
+    | %empty { $$ = NULL; }
+;
+
+// supports bounded types, e.g. "T : SomeInterface, S : SomeClass"
+generic_type_parameter_list_with_constraints:
+    generic_type_with_constraint { $$ = zend_ast_create_list(1, ZEND_AST_GENERIC_TYPE_PARAM_LIST, $1); }
+    | generic_type_parameter_list_with_constraints ',' generic_type_with_constraint { $$ = zend_ast_list_add($1, $3); }
+;
+
+// supports bounded types, e.g. "T : SomeInterface"
+generic_type_with_constraint:
+    T_STRING { $$ = zend_ast_create_zval_from_str(zend_ast_get_str($1)); }
+    | T_STRING ':' simple_generic_type { $$ = zend_ast_create(ZEND_AST_GENERIC_TYPE, zend_ast_create_zval_from_str(zend_ast_get_str($1)), $3); }
+;
+
+nested_generic_type_parameters:
+    T_GENERIC_START nested_generic_type_parameter_list T_GENERIC_END { $$ = $2; }
+    | %empty { $$ = NULL; }
+;
+
+nested_generic_type_parameter_list:
+    generic_type { $$ = zend_ast_create_list(1, ZEND_AST_GENERIC_TYPE_PARAM_LIST, $1); }
+    | nested_generic_type_parameter_list ',' generic_type { $$ = zend_ast_list_add($1, $3); }
+;
+
+non_empty_generic_type_parameters:
+    T_GENERIC_START nested_generic_type_parameter_list T_GENERIC_END { $$ = $2; }
+;
+
+generic_type:
+    T_STRING { $$ = zend_ast_create_zval_from_str(zend_ast_get_str($1)); }
+    | T_STRING non_empty_generic_type_parameters { $$ = zend_ast_create(ZEND_AST_GENERIC_TYPE, zend_ast_create_zval_from_str(zend_ast_get_str($1)), $2); }
 ;
 
 class_modifiers:
@@ -865,10 +934,11 @@ type_expr_without_static:
 	|	intersection_type_without_static	{ $$ = $1; }
 ;
 
+//TODO add generic type params to AST
 type_without_static:
-		T_ARRAY		{ $$ = zend_ast_create_ex(ZEND_AST_TYPE, IS_ARRAY); }
+		T_ARRAY	 nested_generic_type_parameters  { $$ = zend_ast_create_ex(ZEND_AST_TYPE, IS_ARRAY); }
 	|	T_CALLABLE	{ $$ = zend_ast_create_ex(ZEND_AST_TYPE, IS_CALLABLE); }
-	|	name		{ $$ = $1; }
+	|	name nested_generic_type_parameters  { $$ = $1; }
 ;
 
 union_type_without_static_element:
